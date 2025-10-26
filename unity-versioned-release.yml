@@ -1,0 +1,88 @@
+name: HELLRUN Versioned Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Unity
+        uses: game-ci/unity-builder@v2
+        with:
+          unityVersion: 2023.2.0f1
+
+      - name: Run PlayMode Tests
+        uses: game-ci/unity-test-runner@v2
+        with:
+          unityVersion: 2023.2.0f1
+          testMode: PlayMode
+
+      - name: Build Windows
+        uses: game-ci/unity-builder@v2
+        with:
+          unityVersion: 2023.2.0f1
+          buildName: HELLRUN_Windows
+          buildTarget: StandaloneWindows64
+          buildPath: build/windows
+
+      - name: Build WebGL
+        uses: game-ci/unity-builder@v2
+        with:
+          unityVersion: 2023.2.0f1
+          buildName: HELLRUN_WebGL
+          buildTarget: WebGL
+          buildPath: build/webgl
+
+      - name: Build Android
+        uses: game-ci/unity-builder@v2
+        with:
+          unityVersion: 2023.2.0f1
+          buildName: HELLRUN_Android
+          buildTarget: Android
+          buildPath: build/android
+
+      - name: Zip builds
+        run: |
+          cd build
+          zip -r HELLRUN_Windows.zip windows
+          zip -r HELLRUN_WebGL.zip webgl
+          zip -r HELLRUN_Android.zip android
+
+      - name: Zip full Unity project
+        run: |
+          zip -r HELLRUN_Project.zip . -x "*.git*"
+
+      - name: Get next release version
+        id: version
+        run: |
+          latest=$(git tag --sort=-creatordate | head -n 1)
+          if [ -z "$latest" ]; then
+            echo "0.1.0" > version.txt
+          else
+            IFS='.' read -r major minor patch <<< "${latest#v}"
+            patch=$((patch + 1))
+            echo "$major.$minor.$patch" > version.txt
+          fi
+          echo "version=$(cat version.txt)" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: HELLRUN Release v${{ steps.version.outputs.version }}
+          body: |
+            HELLRUN automatic release v${{ steps.version.outputs.version }}
+            Includes Windows, WebGL, Android builds and full Unity project.
+          files: |
+            build/HELLRUN_Windows.zip
+            build/HELLRUN_WebGL.zip
+            build/HELLRUN_Android.zip
+            HELLRUN_Project.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
